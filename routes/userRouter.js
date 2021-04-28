@@ -1,17 +1,18 @@
-const express = require('express');
+const express = require ('express');
+const { RequestTimeout } = require('http-errors');
 const userRouter = express.Router();
+const userMiddle = require('../Utilities/userMiddle');
+const userController = require('../controller/userController');
 
+userRouter.post('/signup',userMiddle.signupHelper ,userController.signup);
+userRouter.post('/login',userController.login);
+userRouter.get('/logout',userController.logout);
 
-const userController = require('../controller/userController')
+userRouter.all('*',invalid);
+async function invalid(req,res){   // sends 404 back to user if any url is not found 
+    res.send(404).json({
+        message : 'Resource not found'
+    })
+}
 
-userRouter.post('/login',userController.login)
-userRouter.post('/signup',userController.signup)
-userRouter.get('/user', userController.user)
-userRouter.get('/', (req, res) => {
-    res.json({ message: '200ok' })
-    res.end()
-})
-module.exports = userRouter
-
-
-
+module.exports= userRouter;

@@ -1,70 +1,98 @@
-const express = require('express');
+const userModel = require('../model/users');
 const session = require('express-session');
-const User = require('../model/User')
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
+const validator = require('../Utilities/validator');
+const SESS_NAME ='user';
 
-exports.user = async (req, res, next) => {
-    try {
-        const { username } = req.session.user
-        const user = await User.where({username}).findOne()
-        if (!user) { // This should never happen
-            const error = new Error('unauthorized')
-            error.status = 401
-            throw error   
-        }
-        res.status(201).json({
-            message:'user data fetched',
-            data: user
-        })
-        res.end()
-    } catch (err) {
-        next(err)
-    }
-}
+exports.signup = async(req,res) => {
+    const userName = req.body.username;
+    const pass = req.body.password;
+    const phoneNumber = req.body.phoneNumber;
+    const email = req.body.email;
 
-exports.login = async (req, res, next) => {
-    const { username, password } = req.body
-    try {
-        const user = await User.where({username}).findOne()
-        console.log(user);
-        //if (!user || user.password !== password)
-        if(!user || !(await bcrypt.compare(password, user.password))) {
-            const error = new Error('unauthorized') //throwing error
-            error.status = 401
-            throw error
-        }
-        req.session.user = user
+    //Check username & password to make sure the match conditions:
+    try{
+        const existingUser = await userModel.findOne({username:userName});
+        console.log(`Found user? ${existingUser}`);
+        if(existingUser == null)
+        {
+            const createdUser = await userModel.create({username:userName,password:pass,phoneNumber:phoneNumber,email:email});
             res.status(201).json({
-            message:'user logged in successfully',
-            data: user
-                })
-        res.end()
-    } catch (err) {
-        next(err)
+                status:'success',
+                message:`User Registered successfully: ${createdUser.username}`,
+                data: createdUser,
+
+            });   
+        }
+        else{
+            console.log(`User already exists with Username ${userName}`);
+            res.status(400).json({
+                status:'fail',
+                message:`User already exists with Username ${userName}, please try again with a different username.`
+            });
+        }
+    }catch(err)
+    {
+        console.log(err);
+        res.status(500).json({
+            message:`An error has occured: ${err}`
+        });
     }
 }
 
-exports.signup = async (req, res, next) => {
-    try {
-        const { username, password } = req.body
-        const saltRounds=10;
-        const hashPassword = await bcrypt.hash(password, saltRounds)
-        const newUser = new User({ username, password:hashPassword })
-        const user = await newUser.save()
-        req.session.user = user
-        res.status(201).json({
-            message:'user created',
-            data: user
+
+exports.login = async(req,res) => {
+    const user = req.body.username;
+    const pass = req.body.password;
+    try{      
+        const existingUser = await userModel.findOne({username:user});
+        if(existingUser)
+        {
+            const match = await bcrypt.compare(pass,existingUser.password);
+            //Check to see if user is already logged in using session.
+            if(req.session.user == user)
+            {
+                res.status(200).json({
+                message:`You're already logged in!`
+                });
+            }
+            else{
+                if(match)
+                {
+                    req.session.user = existingUser;
+                    res.status(200).json({
+                    message:"True You've been signed in!",
+                    data :existingUser,
+                    });
+                }      
+            }
+        }
+        else{
+            res.status(401).json({
+                message:"False Username/password is incorrect"
+            })
+        }
+    } catch(err) {
+        console.log(err);
+        res.status(500).json({
+            message:`An error has occured: ${err}`
+        });
+    }
+    
+}
+
+exports.logout = async (req,res) => {
+    const user = req.session.user;
+    if(user)
+    {
+        req.session.destroy((err)=>{
+            res.clearCookie(SESS_NAME);
         })
-        res.end()
-    } catch (err) {
-        if (err.name === 'databaseError' && err.code === 11000) { //11000 error code for mongo db 
-            const userError  = new Error('username must be unique')
-            userError .status = 412
-            next(userError )
-        } else next(err)
+        res.status(200).json({
+            meessage :'successfully logged out',
+            data : user
+        })
+    }else{
+        res.status(400).send("You're not logged in!");
     }
 }
-
-
-
